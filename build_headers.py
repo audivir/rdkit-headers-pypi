@@ -58,7 +58,9 @@ class HeaderBuilder:
     ) -> None:
         """Initialize builder."""
         self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.dist_dir = Path(dist_dir)
+        self.dist_dir.mkdir(parents=True, exist_ok=True)
         self.cpu_count = os.cpu_count() or 1
 
         # setup templates
