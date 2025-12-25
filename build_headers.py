@@ -123,7 +123,7 @@ class HeaderBuilder:
                     "./bootstrap.sh",
                     f"--prefix={install_dir.absolute()}",
                     f"--with-python={sys.executable}",
-                    "--with-libraries=python,system,serialization,iostreams",
+                    "--with-libraries=python,system,serialization,iostreams,program_options",
                 ],
                 cwd=extract_dir,
             )
