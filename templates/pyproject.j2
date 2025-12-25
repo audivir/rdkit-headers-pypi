@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{ project }}"
+version = "{{ version }}"
+description = "{{ description }}"
+readme = "README.md"
+requires-python = ">=3.9"
+license-files = ["LICENSE"]
+{% if dependencies %}
+dependencies = [
+    {{ '"' + '",\n    "'.join(dependencies) + '"' }}
+]
+{% endif %}
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["{{ project.replace('-', '_') }}*"]

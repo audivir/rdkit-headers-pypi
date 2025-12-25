@@ -1,0 +1,12 @@
+.cache/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+__pycache__/
+*.egg-info/
+/boost-headers/boost_headers/
+/boost-headers/pyproject.toml
+/rdkit-headers/rdkit_headers/
+/rdkit-headers/pyproject.toml
