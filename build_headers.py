@@ -280,7 +280,11 @@ def main() -> None:
             "rdkit-headers",
             args.rdkit_version,
             rdkit_inst,
-            deps=[f"boost-headers=={boost_ver}"],
+            deps=[
+                f"boost-headers=={boost_ver}",
+                "numpy<2.0",
+                f"rdkit=={args.rdkit_version}",
+            ],
         )
 
         print(f"Build Complete! Files available in: {args.dist}")  # noqa: T201
