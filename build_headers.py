@@ -64,6 +64,7 @@ class HeaderBuilder:
         self,
         cache_dir: StrPath | None = DEFAULT_CACHE_DIR,
         dist_dir: StrPath | None = DEFAULT_DIST_DIR,
+        clean_cache: bool = False,
     ) -> None:
         """Initialize builder."""
         self.cache_dir = Path(cache_dir)
@@ -71,6 +72,7 @@ class HeaderBuilder:
         self.dist_dir = Path(dist_dir)
         self.dist_dir.mkdir(parents=True, exist_ok=True)
         self.cpu_count = os.cpu_count() or 1
+        self.clean_cache = clean_cache
 
         # setup templates
         loader = jinja2.FileSystemLoader(str(TEMPLATE_DIR))
@@ -141,11 +143,18 @@ class HeaderBuilder:
         )
         tar_path = self.download(url, f"boost_{v_underscore}.tar.gz")
 
-        extract_dir = self.cache_dir / f"boost_{v_underscore}"
-        install_dir = self.cache_dir / f"boost_inst_{v_underscore}"
+        py_underscore = "_".join(str(x) for x in sys.version_info[:2])
+        extract_orig_dir = self.cache_dir / f"boost_{v_underscore}"
+        extract_dir = self.cache_dir / f"boost_{v_underscore}_{py_underscore}"
+        install_dir = self.cache_dir / f"boost_inst_{v_underscore}_{py_underscore}"
+
+        if install_dir.exists():
+            logger.info("Boost already built, skipping")
+            return install_dir
 
         if not (install_dir / "include").exists():
             self._safe_extract(tar_path, self.cache_dir)
+            extract_orig_dir.rename(extract_dir)
 
             logger.info("Bootstrapping Boost...")
             subprocess.check_call(  # noqa: S603
@@ -194,6 +203,14 @@ class HeaderBuilder:
 
         extract_dir = self.cache_dir / f"rdkit-Release_{v_underscore}"
         install_dir = self.cache_dir / f"rdkit_inst_{v_underscore}"
+
+        if install_dir.exists():
+            logger.info("RDKit already built, skipping")
+            return install_dir, boost_ver
+
+        if self.clean_cache and extract_dir.exists():
+            logger.info("Cleaning build cache.")
+            shutil.rmtree(extract_dir)
 
         self._safe_extract(tar_path, self.cache_dir)
 
@@ -291,6 +308,9 @@ def main() -> None:
         help="Output directory",
     )
     parser.add_argument(
+        "-c", "--clean", action="store_true", help="Clean cache before building",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -302,7 +322,7 @@ def main() -> None:
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
 
-    builder = HeaderBuilder(args.cache, args.dist)
+    builder = HeaderBuilder(args.cache, args.dist, args.clean)
 
     try:
         # Build RDKit (which triggers Boost build)

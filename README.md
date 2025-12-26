@@ -1,3 +1,7 @@
+# rdkit-headers-pypi
+
+Prebuild Boost and RDKit headers as installable python packages and wheels.
+
 # Usage
 
 ```bash
