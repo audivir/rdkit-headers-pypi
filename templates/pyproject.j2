@@ -3,21 +3,19 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "{{ project }}"
+name = "{{ name }}"
 version = "{{ version }}"
 description = "{{ description }}"
 readme = "README.md"
 requires-python = ">=3.9"
-license-files = ["LICENSE"]
-{% if dependencies %}
+license-files = ["LICENSE"]{% if dependencies %}
 dependencies = [
     {{ '"' + '",\n    "'.join(dependencies) + '"' }}
-]
-{% endif %}
+]{% endif %}
 
 [project.optional-dependencies]
 dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["{{ project.replace('-', '_') }}*"]
+include = ["{{ name.replace('-', '_') }}*"]

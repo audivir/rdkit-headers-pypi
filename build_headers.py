@@ -14,10 +14,11 @@ import subprocess
 import sys
 import sysconfig
 import tarfile
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import build.util
+import build
 import jinja2
 import requests
 
@@ -32,8 +33,12 @@ DEFAULT_CACHE_DIR = Path(".cache")
 DEFAULT_DIST_DIR = Path("dist")
 TEMPLATE_DIR = Path("templates")
 
-BOOST_URL_TEMPLATE = "https://archives.boost.io/release/{version}/source/boost_{version_underscore}.tar.gz"
-RDKIT_URL_TEMPLATE = "https://github.com/rdkit/rdkit/archive/refs/tags/Release_{version_underscore}.tar.gz"
+BOOST_URL_TEMPLATE = (
+    "https://archives.boost.io/release/{version}/source/boost_{version_underscore}.tar.gz"
+)
+RDKIT_URL_TEMPLATE = (
+    "https://github.com/rdkit/rdkit/archive/refs/tags/Release_{version_underscore}.tar.gz"
+)
 
 
 class BuilderError(Exception):
@@ -46,6 +51,10 @@ class DependencyError(BuilderError):
 
 class BuildFailureError(BuilderError):
     """Compilation or installation step failed."""
+
+
+class BoostVersionError(BuildFailureError):
+    """Boost version could not be detected."""
 
 
 class HeaderBuilder:
@@ -65,7 +74,7 @@ class HeaderBuilder:
 
         # setup templates
         loader = jinja2.FileSystemLoader(str(TEMPLATE_DIR))
-        self.env = jinja2.Environment(loader=loader, autoescape=True)
+        self.env = jinja2.Environment(loader=loader, autoescape=False)  # noqa: S701
 
         # validate environment
         for tool in ["cmake", "make", "rsync"]:
@@ -87,6 +96,27 @@ class HeaderBuilder:
                             "Tarball contains path traversal attempt.",
                         )
                     tar.extract(member, extract_to)
+
+    def download_from_pip(self, package: str, version: str) -> Path:
+        """Download a package from pip."""
+        output = subprocess.check_output(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "download",
+                f"{package}=={version}",
+                "--no-deps",
+                "--dest",
+                str(self.cache_dir),
+            ],
+            text=True,
+        )
+        if match := re.search("Saved (.*)", output):
+            return Path(match.group(1))
+        if match := re.search("File was already downloaded (.*)", output):
+            return Path(match.group(1))
+        raise DependencyError("Could not extract file path from pip output")
 
     def download(self, url: str, output_name: str) -> Path:
         """Download a file from a URL to cache."""
@@ -145,6 +175,19 @@ class HeaderBuilder:
 
     def build_rdkit(self, version: str) -> tuple[Path, str]:
         """Build RDKit headers."""
+        whlfile = self.download_from_pip("rdkit", version)
+
+        with zipfile.ZipFile(whlfile) as whlzip:
+            # look for rdkit.libs/libboost...
+            for name in whlzip.namelist():
+                if name.startswith("rdkit.libs/libboost_"):
+                    if match := re.search(r"libboost_[\w-]+\.so\.(\d+\.\d+\.\d+)", name):
+                        boost_ver = match.group(1)
+                        break
+                    raise BoostVersionError
+            else:
+                raise BoostVersionError
+
         v_underscore = version.replace(".", "_")
         url = RDKIT_URL_TEMPLATE.format(version_underscore=v_underscore)
         tar_path = self.download(url, f"rdkit_{v_underscore}.tar.gz")
@@ -153,18 +196,6 @@ class HeaderBuilder:
         install_dir = self.cache_dir / f"rdkit_inst_{v_underscore}"
 
         self._safe_extract(tar_path, self.cache_dir)
-
-        # Detect Boost version from RDKit source
-        cmakelists = extract_dir / "CMakeLists.txt"
-        match = re.search(
-            r'RDK_BOOST_VERSION "(\d+\.\d+\.\d+)"',
-            cmakelists.read_text(),
-        )
-        if not match:
-            raise BuildFailureError(
-                "Could not detect required Boost version from RDKit source.",
-            )
-        boost_ver = match.group(1)
 
         boost_path = self.build_boost(boost_ver)
 
@@ -195,14 +226,17 @@ class HeaderBuilder:
         self,
         name: str,
         version: str,
+        desc: str,
         include_src: StrPath,
         deps: Sequence[str] | None = None,
     ) -> None:
-        """Generates the wheel-ready directory structure."""
+        """Generate the wheel-ready directory structure."""
         pkg_root = Path(name)
         pkg_name = name.replace("-", "_")
         pkg_dir = pkg_root / pkg_name
         pkg_dir.mkdir(parents=True, exist_ok=True)
+        if postfix := os.getenv("POSTFIX"):
+            version += f".post{postfix}"
 
         # 1. Generate Metadata
         for template_name, target in [
@@ -213,6 +247,7 @@ class HeaderBuilder:
             content = template.render(
                 name=name,
                 version=version,
+                description=desc,
                 dependencies=deps or [],
             )
             target.write_text(content)
@@ -224,8 +259,8 @@ class HeaderBuilder:
                 "rsync",
                 "-av",
                 "--delete",
-                str(include_src / "include/"),
-                str(pkg_dir / "include/"),
+                include_src / "include",
+                pkg_dir,
             ],
         )
 
@@ -237,7 +272,7 @@ class HeaderBuilder:
 
 
 def main() -> None:
-    """Main entrypoint."""
+    """Build RDKit & Boost header packages."""
     parser = argparse.ArgumentParser(description="Build RDKit & Boost header packages.")
     parser.add_argument(
         "rdkit_version",
@@ -275,12 +310,13 @@ def main() -> None:
 
         # Package Boost
         boost_inst = builder.cache_dir / f"boost_inst_{boost_ver.replace('.', '_')}"
-        builder.create_python_package("boost-headers", boost_ver, boost_inst)
+        builder.create_python_package("boost-headers", boost_ver, "Boost headers.", boost_inst)
 
         # Package RDKit
         builder.create_python_package(
             "rdkit-headers",
             args.rdkit_version,
+            "RDKit headers.",
             rdkit_inst,
             deps=[
                 f"boost-headers=={boost_ver}",
