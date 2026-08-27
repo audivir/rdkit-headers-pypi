@@ -1,0 +1,4 @@
+This package repackages the header files of Boost (https://www.boost.org),
+unmodified, for installation via pip.
+
+Boost is distributed under the Boost Software License 1.0, see LICENSE.

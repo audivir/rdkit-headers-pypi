@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      # add mypy to path
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - uses: j178/prek-action@v3.0.0
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev --python ${{ matrix.python-version }}
+      - run: uv run coverage run -m pytest
+      - run: uv run coverage combine || true
+      - run: uv run coverage report
+  build-smoke:
+    # exercises the real build pipeline for one release
+    runs-on: ubuntu-latest
+    env:
+      RDKIT_VERSION: 2026.3.2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run python -m rdkit_headers_pypi build "$RDKIT_VERSION"
+      - run: uv pip install --no-deps dist/boost_headers-*.whl dist/rdkit_headers-*.whl
+      - run: uv run python -c "from boost_headers import get_include; print(get_include())"
+      - run: uv run python -c "from rdkit_headers import get_include; print(get_include())"

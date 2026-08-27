@@ -1,0 +1,11 @@
+# Changes here will be overwritten by Copier
+_commit: e730ed7
+_src_path: gh:audivir/copier-template
+author_email: pypi@audivir.de
+author_name: Tim Hörmann
+description: Prebuild Boost and RDKit headers as installable Python packages.
+github_org: audivir
+project_name: rdkit-headers-pypi
+project_slug: rdkit_headers_pypi
+project_type: python
+publishable: true

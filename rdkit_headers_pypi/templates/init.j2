@@ -1,0 +1,13 @@
+"""Ships prebuilt {{ name }} headers for use as a C++ include path."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+__version__ = "{{ version }}"
+__builder_version__ = "{{ builder_version }}"
+
+
+def get_include() -> Path:
+    """Returns path to the bundled {{ name }} headers."""
+    return Path(__file__).parent / "include"

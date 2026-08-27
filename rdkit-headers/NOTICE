@@ -1,0 +1,5 @@
+This package repackages the header files of RDKit (https://www.rdkit.org),
+unmodified, for installation via pip. RDKit is copyright Rational Discovery
+LLC, Greg Landrum, Julie Penzotti, and other contributors.
+
+RDKit is distributed under the BSD 3-Clause License, see LICENSE.

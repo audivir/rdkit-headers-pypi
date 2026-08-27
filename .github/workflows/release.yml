@@ -1,0 +1,71 @@
+name: Publish Headers
+on:
+  workflow_dispatch:
+  schedule:
+    # weekly check for new RDKit releases or builder-version updates needing a rebuild
+    # build-headers is skipped when nothing needs building.
+    - cron: "0 6 * * 1"
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      rdkit_versions: ${{ steps.versions.outputs.rdkit_versions }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - id: versions
+        run: |
+          versions="$(uv run python -m rdkit_headers_pypi versions --missing-only)"
+          echo "rdkit_versions=$versions" >> "$GITHUB_OUTPUT"
+  build-headers:
+    needs: matrix
+    if: needs.matrix.outputs.rdkit_versions != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rdkit_version: ${{ fromJson(needs.matrix.outputs.rdkit_versions) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Cache Boost and RDKit build artifacts
+        uses: actions/cache@v4
+        with:
+          # Many RDKit releases link the same Boost version
+          path: |
+            .cache/boost_*.tar.gz
+            .cache/boost_[0-9]*
+            .cache/boost_inst_*
+            .cache/rdkit_*.tar.gz
+            .cache/rdkit-Release_*
+            .cache/rdkit_inst_*
+          key: build-cache-${{ runner.os }}-${{ matrix.rdkit_version }}
+          restore-keys: |
+            build-cache-${{ runner.os }}-
+      - run: uv run python -m rdkit_headers_pypi build ${{ matrix.rdkit_version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: headers-${{ matrix.rdkit_version }}
+          path: dist/
+  publish-headers:
+    needs: build-headers
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: headers-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # boost-headers versions repeat across RDKit releases, skip them
+          skip-existing: true
