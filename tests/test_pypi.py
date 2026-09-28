@@ -35,19 +35,19 @@ def test_list_rdkit_versions_keeps_only_releases_with_a_wheel_and_sorts_by_versi
         "2024.3.1": [{"packagetype": "bdist_wheel"}, {"packagetype": "sdist"}],
     }
     response = _mock_response({"releases": releases})
-    with patch("rdkit_headers_pypi.pypi.requests.get", return_value=response):
+    with patch("rdkit_headers_pypi.pypi._session.get", return_value=response):
         assert list_rdkit_versions() == ["2024.3.1", "2025.9.3"]
 
 
 def test_list_published_versions_returns_empty_set_for_unpublished_package() -> None:
     response = _mock_response({}, status_code=404)
-    with patch("rdkit_headers_pypi.pypi.requests.get", return_value=response):
+    with patch("rdkit_headers_pypi.pypi._session.get", return_value=response):
         assert list_published_versions("rdkit-headers") == set()
 
 
 def test_list_published_versions_returns_release_keys() -> None:
     response = _mock_response({"releases": {"1.85.0": [], "1.86.0": []}})
-    with patch("rdkit_headers_pypi.pypi.requests.get", return_value=response):
+    with patch("rdkit_headers_pypi.pypi._session.get", return_value=response):
         assert list_published_versions("boost-headers") == {"1.85.0", "1.86.0"}
 
 
@@ -67,7 +67,7 @@ def test_download_wheel_filters_by_platform_substring(tmp_path: Path) -> None:
     ]
     response = _mock_response({"urls": files})
     with (
-        patch("rdkit_headers_pypi.pypi.requests.get", return_value=response),
+        patch("rdkit_headers_pypi.pypi._session.get", return_value=response),
         patch("rdkit_headers_pypi.pypi.download") as mock_download,
     ):
         download_wheel("rdkit", "1.0", tmp_path, platform="linux")
@@ -79,7 +79,7 @@ def test_download_wheel_filters_by_platform_substring(tmp_path: Path) -> None:
 def test_download_wheel_raises_dependency_error_if_no_wheel_matches(tmp_path: Path) -> None:
     files = [{"packagetype": "sdist", "filename": "x.tar.gz", "url": "http://x/sdist"}]
     response = _mock_response({"urls": files})
-    with patch("rdkit_headers_pypi.pypi.requests.get", return_value=response):
+    with patch("rdkit_headers_pypi.pypi._session.get", return_value=response):
         assert download_wheel("rdkit", "1.0", tmp_path) is None
 
 
@@ -87,7 +87,7 @@ def test_download_reuses_cached_file(tmp_path: Path) -> None:
     output_path = tmp_path / "cached.tar.gz"
     output_path.write_bytes(b"cached")
 
-    with patch("rdkit_headers_pypi.pypi.requests.get") as mock_get:
+    with patch("rdkit_headers_pypi.pypi._session.get") as mock_get:
         result = download("http://example.com/file", output_path)
 
     mock_get.assert_not_called()
@@ -101,7 +101,7 @@ def test_download_streams_response_to_output_path(tmp_path: Path) -> None:
     response.__enter__.return_value = response
     response.__exit__.return_value = False
 
-    with patch("rdkit_headers_pypi.pypi.requests.get", return_value=response) as mock_get:
+    with patch("rdkit_headers_pypi.pypi._session.get", return_value=response) as mock_get:
         result = download("http://example.com/file", output_path)
 
     mock_get.assert_called_once()

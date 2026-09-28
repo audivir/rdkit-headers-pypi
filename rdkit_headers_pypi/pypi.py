@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import requests
 from packaging.version import Version
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -21,6 +23,20 @@ logger = logging.getLogger(__name__)
 RDKIT_PYPI_URL = "https://pypi.org/pypi/rdkit/json"
 PYPI_RELEASE_URL_TEMPLATE = "https://pypi.org/pypi/{package}/{version}/json"
 PYPI_PROJECT_URL_TEMPLATE = "https://pypi.org/pypi/{package}/json"
+
+# PyPI's CDN intermittently answers 503 "Backend is unhealthy", retry transient errors
+_session = requests.Session()
+_session.mount(
+    "https://",
+    HTTPAdapter(
+        max_retries=Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+    ),
+)
 
 
 def download_wheel(
@@ -35,7 +51,7 @@ def download_wheel(
         platform: Substring the wheel filename platform tag must contain, e.g. "linux" to
             prefer a manylinux wheel regardless of host OS. Any wheel matches if empty.
     """
-    response = requests.get(
+    response = _session.get(
         PYPI_RELEASE_URL_TEMPLATE.format(package=package, version=version), timeout=30
     )
     response.raise_for_status()
@@ -56,7 +72,7 @@ def download(url: str, output_path: Path) -> Path:
         return output_path
 
     logger.info("Downloading %s...", url)
-    with requests.get(url, stream=True, timeout=300) as response:
+    with _session.get(url, stream=True, timeout=300) as response:
         response.raise_for_status()
         with output_path.open("wb") as f:
             shutil.copyfileobj(response.raw, f)
@@ -65,7 +81,7 @@ def download(url: str, output_path: Path) -> Path:
 
 def list_rdkit_versions() -> list[str]:
     """Returns every RDKit release on PyPI that has at least one published wheel."""
-    response = requests.get(RDKIT_PYPI_URL, timeout=30)
+    response = _session.get(RDKIT_PYPI_URL, timeout=30)
     response.raise_for_status()
     releases: dict[str, list[dict[str, str]]] = response.json()["releases"]
     versions = [
@@ -78,7 +94,7 @@ def list_rdkit_versions() -> list[str]:
 
 def list_published_versions(package: str) -> set[str]:
     """Returns every version of package already published on PyPI, empty if never published."""
-    response = requests.get(PYPI_PROJECT_URL_TEMPLATE.format(package=package), timeout=30)
+    response = _session.get(PYPI_PROJECT_URL_TEMPLATE.format(package=package), timeout=30)
     if response.status_code == requests.codes.not_found:
         return set()
     response.raise_for_status()
